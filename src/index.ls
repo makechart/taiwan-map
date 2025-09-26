@@ -1,7 +1,7 @@
 module.exports =
   pkg:
     name: 'taiwan-map', version: '0.0.1'
-    extend: {name: "base", version: "0.0.1"}
+    extend: {name: "@makechart/base"}
     dependencies: [
       {url: "https://d3js.org/topojson.v2.min.js", async: false}
       {url: "https://d3js.org/d3-geo.v2.min.js", async: false}
