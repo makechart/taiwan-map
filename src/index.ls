@@ -85,13 +85,20 @@ mod = ({ctx, data, manager, cls}) ->
       d3.select @svg .selectAll \path .attr \opacity, 0
       @obj.fit {node: @g, box: @layout.get-node(\view).getBoundingClientRect!}
 
+  # 宣告這張圖自己會發 filter. 縣市點選跟 pie 的 wedge 點選是同一種東西.
+  filter: (filters, internal) ->
+
+
   parse: ->
     @tint.reset!
     @extent = c: [undefined, undefined]
     prefix = (level or '').split('/')[* - 1] or ''
     d3.select @svg .selectAll \path .each (d,i) ~>
       d.data = @data.filter(->
-        it.name = (if it.name? => it.name else '').replace /臺/g,'台'
+        # 名字要正規化才對得上地圖 ( 臺 / 台 ), 但對外發 filter 要用原本的值,
+        # 所以先留一份 _name
+        if !(it._name?) => it._name = (if it.name? => it.name else '')
+        it.name = it._name.replace /臺/g,'台'
         it.name == d.properties.name or "#prefix#{it.name}" == d.properties.name
       ).0 or {name: d.properties.name}
       if !(@extent.c.0?) or d.data.color < @extent.c.0 => @extent.c.0 = d.data.color
@@ -134,6 +141,13 @@ mod = ({ctx, data, manager, cls}) ->
 
   render: ->
     if !@obj.scale => return
+    self = @
+    picked-of = (d) ~> @local.picked-of d
+    d3.select @svg .selectAll \path
+      .on \click, (e, d) ->
+        # mod 自己的工具方法放在 mod.local, 核心建構時綁到實例上
+        self.local.toggle-select e, (d3.select(@).datum! or d)
+      .style \cursor, \pointer
     d3.select @svg .selectAll \path
       .transition!duration 350
       .attr \fill, (d,i) ~>
@@ -142,10 +156,11 @@ mod = ({ctx, data, manager, cls}) ->
           @tint.get d.data.color
         else @tint.get d.data.cat
       .attr \opacity, (d,i) ~>
+        op = picked-of d
         if @use-color =>
-          if @legend.is-selected d.data.color => 1 else 0.1
-        else if @legend.is-selected d.data.cat => 1
-        else 0.1
+          if @legend.is-selected d.data.color => op else op * 0.1
+        else if @legend.is-selected d.data.cat => op
+        else op * 0.1
       .attr \fill-opacity, (d,i) ~>
         if @use-color =>
           if !@extent.c.0? => return 0
@@ -156,3 +171,25 @@ mod = ({ctx, data, manager, cls}) ->
       .attr \stroke-width, (@cfg.border.width / @obj.scale!)
       .attr \stroke-linejoin, (@cfg.border.linejoin)
     @legend.render!
+
+  # 這張圖自己的工具方法. `local` 是核心保留給圖表的位置, 核心不管裡面有什麼,
+  # 建構時會綁到實例上, 所以呼叫端寫 `@local.xxx()` 就好
+  local:
+
+    # 單擊只選這一個, shift 增刪, 再點一次選到只剩自己的那個就清空 ( 與 pie 一致 )
+    toggle-select: (evt, d) ->
+      key = (d.data or {})._name
+      if !key? => return
+      vs = (((@binding.name or {}).filter or {}).value or []).slice!
+      vs = if evt and evt.shiftKey =>
+        if key in vs => vs.filter (-> it != key) else vs ++ [key]
+      else if vs.length == 1 and vs.0 == key => []
+      else [key]
+      @filter {name: (if vs.length => {type: \index, value: vs} else undefined)}, true
+
+    # 這一塊有沒有被選中. f 是 [] 表示「什麼都沒選」, 跟「沒有篩選」不一樣
+    picked-of: (d) ->
+      f = ((@binding.name or {}).filter or {}).value
+      if !f => return 1
+      if ((d.data or {})._name) in f => 1
+      else (((@cfg.common or {}).subset or {}).opacity ? 0.2)
