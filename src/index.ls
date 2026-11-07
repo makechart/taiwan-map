@@ -1,10 +1,14 @@
 module.exports =
   pkg:
     name: 'taiwan-map', version: '0.0.1'
-    extend: {name: "@makechart/base"}
+    # lite: 不帶 d3 的 base. 補間改用 chart.anim, 可以逐格錄影 ( 見 @plotdb/chart utils/anim )
+    extend: {name: "@makechart/base", path: "lite/index.html"}
+    # pdmaptw 用 d3-geo ( 投影 / path ) 與 d3-selection, 依相依順序載入, 不需要 d3 core
     dependencies: [
-      {url: "https://d3js.org/topojson.v2.min.js", async: false}
-      {url: "https://d3js.org/d3-geo.v2.min.js", async: false}
+    * name: \topojson-client, version: "3.1.0", path: "dist/topojson-client.min.js", async: false
+    * name: \d3-array, version: "3.2.4", path: "dist/d3-array.min.js", async: false
+    * name: \d3-geo, version: "3.1.1", path: "dist/d3-geo.min.js", async: false
+    * name: \d3-selection, version: "3.0.0", path: "dist/d3-selection.min.js", async: false
     ]
   init: ({root, ctx, pubsub, data, manager}) ->
     mod {ctx, data, manager, cls: @_instance.block}
@@ -12,6 +16,9 @@ module.exports =
 
 mod = ({ctx, data, manager, cls}) ->
   {chart, d3, ldcolor, topojson} = ctx
+  {format: {d3: fmt}, color: {turbo}} = chart.utils
+  # 地圖的 path 由 pdmaptw 建立, 資料 ( feature ) 掛在 __data__ 上
+  paths = (svg) -> Array.from(svg.querySelectorAll \path)
   <~ Promise.resolve!then _
   level = data.level or 'county'
   # we want to change libs dynamically so we have to load them here.
@@ -59,30 +66,30 @@ mod = ({ctx, data, manager, cls}) ->
     @tint = tint = new chart.utils.tint!
     @g = @layout.get-group \view
     @obj = new pdmaptw {root: @g, type: level}
-    @scale = scale = {color: d3.interpolateTurbo}
+    @scale = scale = {color: turbo}
     @legend = new chart.utils.legend do
       root: @root
       name: \legend
       layout: @layout
-      shape: (d) -> d3.select(@).attr \fill, tint.get(d.key)
+      shape: (d) -> @setAttribute \fill, tint.get(d.key)
     @legend.on \select, ~> @bind!; @resize!; @render!
     @tip = new chart.utils.tip {
       root: @root,
       accessor: ({evt}) ~>
-        if !(evt.target and data = d3.select(evt.target).datum!) => return null
+        if !(evt.target and data = evt.target.__data__) => return null
         return {
           name: data.data.name
           value: (
             if @use-color =>
               if isNaN(data.data.color) => '-'
-              else d3.format(@cfg.tip.format or '.2r')(data.data.color)
+              else fmt(@cfg.tip.format or '.2r')(data.data.color)
             else data.data.cat
           )
         }
       range: ~> return @layout.get-node \view .getBoundingClientRect!
     }
     @obj.init!then ~>
-      d3.select @svg .selectAll \path .attr \opacity, 0
+      paths(@svg).map -> it.setAttribute \opacity, 0
       @obj.fit {node: @g, box: @layout.get-node(\view).getBoundingClientRect!}
 
   # 宣告這張圖自己會發 filter. 縣市點選跟 pie 的 wedge 點選是同一種東西.
@@ -93,7 +100,8 @@ mod = ({ctx, data, manager, cls}) ->
     @tint.reset!
     @extent = c: [undefined, undefined]
     prefix = (level or '').split('/')[* - 1] or ''
-    d3.select @svg .selectAll \path .each (d,i) ~>
+    paths(@svg).map (n) ~>
+      d = n.__data__
       d.data = @data.filter(->
         # 名字要正規化才對得上地圖 ( 臺 / 台 ), 但對外發 filter 要用原本的值,
         # 所以先留一份 _name
@@ -118,9 +126,9 @@ mod = ({ctx, data, manager, cls}) ->
     if @use-color =>
       unit = (if @binding.color.unit => that else '')
       try
-        format = d3.format(@cfg.legend.format or '.2f')
+        format = fmt(@cfg.legend.format or '.2f')
       catch e
-        format = d3.format('.1f')
+        format = fmt('.1f')
 
       {ticks, extent, labels} = chart.utils.tick do
         extent: @extent.c
@@ -143,33 +151,33 @@ mod = ({ctx, data, manager, cls}) ->
     if !@obj.scale => return
     self = @
     picked-of = (d) ~> @local.picked-of d
-    d3.select @svg .selectAll \path
-      .on \click, (e, d) ->
-        # mod 自己的工具方法放在 mod.local, 核心建構時綁到實例上
-        self.local.toggle-select e, (d3.select(@).datum! or d)
-      .style \cursor, \pointer
-    d3.select @svg .selectAll \path
-      .transition!duration 350
-      .attr \fill, (d,i) ~>
-        if @use-color =>
-          if !@extent.c.0? => return '#fff'
-          @tint.get d.data.color
-        else @tint.get d.data.cat
-      .attr \opacity, (d,i) ~>
-        op = picked-of d
-        if @use-color =>
-          if @legend.is-selected d.data.color => op else op * 0.1
-        else if @legend.is-selected d.data.cat => op
-        else op * 0.1
-      .attr \fill-opacity, (d,i) ~>
-        if @use-color =>
-          if !@extent.c.0? => return 0
-          if @cfg.dim-empty => (if d.data.color? => 1 else 0.2) else 1
-        else
-          if @cfg.dim-empty => (if d.data.cat? => 1 else 0.2) else 1
-      .attr \stroke, @cfg.border.color
-      .attr \stroke-width, (@cfg.border.width / @obj.scale!)
-      .attr \stroke-linejoin, (@cfg.border.linejoin)
+    paths(@svg).map (n) ~>
+      d = n.__data__
+      # 同 d3 的 .on: 每次 render 換掉 handler, 不重複掛
+      if !n._click => n.addEventListener \click, (e) -> n._click e
+      n._click = (e) -> self.local.toggle-select e, (n.__data__ or d)
+      n.style.cursor = \pointer
+      op = picked-of d
+      @anim.tween n, {
+        fill: (
+          if @use-color => (if !@extent.c.0? => '#fff' else @tint.get d.data.color)
+          else @tint.get d.data.cat
+        )
+        opacity: (
+          if @use-color => (if @legend.is-selected d.data.color => op else op * 0.1)
+          else if @legend.is-selected d.data.cat => op
+          else op * 0.1
+        )
+        "fill-opacity": (
+          if @use-color =>
+            if !@extent.c.0? => 0
+            else if @cfg.dim-empty => (if d.data.color? => 1 else 0.2) else 1
+          else if @cfg.dim-empty => (if d.data.cat? => 1 else 0.2) else 1
+        )
+        stroke: @cfg.border.color
+        "stroke-width": (@cfg.border.width / @obj.scale!)
+        "stroke-linejoin": @cfg.border.linejoin
+      }, {duration: 350}
     @legend.render!
 
   # 這張圖自己的工具方法. `local` 是核心保留給圖表的位置, 核心不管裡面有什麼,
