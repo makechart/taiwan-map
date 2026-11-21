@@ -50,12 +50,12 @@ mod = ({ctx, data, manager, cls}) ->
   }) <<< {
     border:
       color: type: \color, default: \#fff
-      width: type: \number, default: 1, min: 0, max: 100, step: 0.5
-      linejoin: type: \choice, values: <[round bevel miter]>, default: \round
+      width: type: \number, default: 1, min: 0, max: 100, step: 0.5, desc: {en: "width of the borders between regions ( px )", "zh-TW": "區塊之間邊界的粗細 ( px )"}
+      linejoin: type: \choice, values: <[round bevel miter]>, default: \round, desc: {en: "shape of the border corners", "zh-TW": "邊界轉角的形狀"}
     legend: {} <<< chart.utils.config.preset.legend <<< {
-      format: type: \format, default: '.2r'
+      format: type: \format, default: '.2r', desc: {en: "number format of the range labels in the legend", "zh-TW": "圖例中區間標籤的數值格式"}
       ticking:
-        exp: type: \number, default: 0, min: -1, max: 1, step: 0.01
+        exp: type: \number, default: 0, min: -1, max: 1, step: 0.01, desc: {en: "how the legend ranges grow: 0 keeps them equal, positive makes the low ranges narrower, negative makes the high ranges narrower", "zh-TW": "圖例區間的分布：0 等寬，正值讓低值的區間較窄，負值讓高值的區間較窄"}
     }
   }
   dimension:
