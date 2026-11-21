@@ -58,6 +58,10 @@ mod = ({ctx, data, manager, cls}) ->
         exp: type: \number, default: 0, min: -1, max: 1, step: 0.01, desc: {en: "how the legend ranges grow: 0 keeps them equal, positive makes the low ranges narrower, negative makes the high ranges narrower", "zh-TW": "圖例區間的分布：0 等寬，正值讓低值的區間較窄，負值讓高值的區間較窄"}
     }
   }
+  # 段落 ( tab ) 的說明, key 是段落的路徑. preset 的段落由 chart.utils.config.tabinfo 掛上來, 共用的 common 由核心補
+  tabinfo: chart.utils.config.tabinfo({tip: \tip, legend: \legend}) <<<
+    border: desc: {en: "the borders between regions", "zh-TW": "區塊之間的邊界"}
+    "legend/ticking": desc: {en: "how the value ranges in the legend are split", "zh-TW": "圖例數值區間的切分方式"}
   dimension:
     name: {type: \N, name: "縣市"}
     color: {type: \R, name: "顏色/數值"}
